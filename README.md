@@ -1,6 +1,6 @@
 # KM
 
-This repository aims to get WP and WR estimate from an image of the Kaplan-Meier estimate of the cumulative distribution function of failure (or event). It also contains an example.
+This repository aims to get win proportion (WP) and win ratio (WR) estimate from an image of the Kaplan-Meier estimate of the cumulative distribution function of failure (or event). It also contains an example.
 
 ## Data
 
@@ -10,4 +10,6 @@ If you would like to use the code for a different trial with two arms, just clon
 
 ## Data processing and visualization
 
-First run 
+First run process_visualize.py. This file takes the placebo.csv and treatment.csv, and adds boundaries (0 and 5 in our example), fixes the noise that was introduced by digitalizing the curve by making it into a step function. Finally, it samples additional points and visualizes both curves.
+
+As a second step run sampling.py. This is the python file, that makes WP and WR approximations from the curves. It uses the new points created by process_visualize.py, so run that first. It samples from the cdf with uniform inverse sampling and approximates WP and WR from these samples. It reruns this process numerous times and prints out the histogram of the sampled WR values as well as the mean and median. You can change the number of trials and the number of patients in each arm.
