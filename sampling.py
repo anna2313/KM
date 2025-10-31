@@ -46,22 +46,18 @@ def find_x_for_max_y_leq(
     df: pd.DataFrame, value: float
 ) -> Optional[Union[float, pd.Series]]:
     """Find x in `df` whose y is the largest but <= value.
+    If there are multiple such x, return the smallest one. If there is no big enough y return False as death indicator (this means censoring).
 
     - `df` is expected to have two columns: x and y (names 'X'/'Y' or 'x'/'y' or first two cols).
     - `value` is a float (expected between 0 and 1 by caller).
-
-    Returns the x corresponding to the maximum y satisfying y <= value.
-    If multiple rows share that y, returns a pandas Series of x values (preserving order).
-    If no y <= value exists, returns None and prints a message.
     """
-    # Accept any numeric `value`; don't restrict to [0,1] so callers can query
-    # values outside that range (e.g., larger than any table y).
+    # Accept any numeric `value`; don't restrict to [0,1]
     try:
         value = float(value)
     except Exception:
         raise ValueError("value must be numeric")
 
-    # infer column names
+    # Infer column names
     if "Y" in df.columns and "X" in df.columns:
         y_col, x_col = "Y", "X"
     elif "y" in df.columns and "x" in df.columns:
@@ -69,18 +65,21 @@ def find_x_for_max_y_leq(
     else:
         x_col, y_col = df.columns[0], df.columns[1]
 
-    # ensure numeric
+    # Ensure numeric
     y_vals = pd.to_numeric(df[y_col], errors="coerce")
     x_vals = df[x_col]
 
+    # We might have value larger than any y in table
     if y_vals.iloc[-1] < value:
         return x_vals.iloc[-1], False
 
+    # Find the largest y <= value (the second output is death indicator and is True if found)
     i = len(y_vals) - 1
     while i > 0 and y_vals.iloc[i - 1] >= value:
         i -= 1
     i -= 1
 
+    # Doublecheck before returning
     if y_vals.iloc[i] <= value:
         return x_vals.iloc[i], True
     else:
@@ -88,83 +87,56 @@ def find_x_for_max_y_leq(
 
 
 if __name__ == "__main__":
+    # Set random seed for reproducibility
     np.random.seed(42)
     random.seed(42)
-    sampled_step_dotted = pd.read_csv("sampled_step_dotted.csv")
-    sampled_step_full = pd.read_csv("sampled_step_full.csv")
-    df_dotted = pd.read_csv("original_points_dotted.csv")
-    df_full = pd.read_csv("original_points_full.csv")
 
-    # Plot: sampled step and original points
-    plt.figure(figsize=(8, 4))
-    plt.step(
-        sampled_step_dotted["x"],
-        sampled_step_dotted["y"],
-        where="post",
-        label="Sampled Piecewise-Constant (Dotted)",
-    )
-    plt.scatter(
-        df_dotted.iloc[:, 0],
-        df_dotted.iloc[:, 1],
-        color="red",
-        label="Original Points (Dotted)",
-    )
+    placebo = pd.read_csv(
+        "original_points_placebo.csv"
+    )  # We load the points with extra boundary points already added
+    treatment = pd.read_csv(
+        "original_points_treatment.csv"
+    )  # We load the points with extra boundary points already added
 
-    plt.step(
-        sampled_step_full["x"],
-        sampled_step_full["y"],
-        where="post",
-        label="Sampled Piecewise-Constant (Full)",
-    )
-    plt.scatter(
-        df_full.iloc[:, 0],
-        df_full.iloc[:, 1],
-        color="blue",
-        label="Original Points (Full)",
-    )
-    plt.xlabel("X")
-    plt.ylabel("Y")
-    plt.title("Piecewise-Constant Sampling")
-    plt.legend()
-    plt.show()
+    # Parameters
+    sample_number_placebo = 208
+    sample_number_treatment = 212
+    number_of_simulations = 10000
 
     WR_values = []
-    for i in range(10000):
-        sample_number = 200
-        dotted_samples_x = []
-        dotted_deaths = []
-        dotted_samples_y = []
-        for i in range(208):
+    for i in range(number_of_simulations):
+        placebo_samples_x = []
+        placebo_deaths = []
+        placebo_samples_y = []
+        for i in range(sample_number_placebo):
             y_sample = np.random.uniform(0.0, 1.0)
-            x_sample, death = find_x_for_max_y_leq(df_dotted, y_sample)
-            dotted_samples_x.append((x_sample))
-            dotted_deaths.append(death)
-            dotted_samples_y.append((y_sample))
+            x_sample, death = find_x_for_max_y_leq(placebo, y_sample)
+            placebo_samples_x.append((x_sample))
+            placebo_deaths.append(death)
+            placebo_samples_y.append((y_sample))
 
-        full_samples_x = []
-        full_samples_y = []
-        full_deaths = []
-        for i in range(212):
+        treatment_samples_x = []
+        treatment_samples_y = []
+        treatment_deaths = []
+        for i in range(sample_number_treatment):
             y_sample = np.random.uniform(0.0, 1.0)
-            x_sample, death = find_x_for_max_y_leq(df_full, y_sample)
-            full_samples_x.append((x_sample))
-            full_samples_y.append((y_sample))
-            full_deaths.append(death)
+            x_sample, death = find_x_for_max_y_leq(treatment, y_sample)
+            treatment_samples_x.append((x_sample))
+            treatment_samples_y.append((y_sample))
+            treatment_deaths.append(death)
 
-        Ta = full_samples_x
-        Tb = dotted_samples_x
-        Da = full_deaths
-        Db = dotted_deaths
+        Ta = treatment_samples_x
+        Tb = placebo_samples_x
+        Da = treatment_deaths
+        Db = placebo_deaths
         wp = WP_no_ties(Ta, Tb, Da, Db)
-        """print(f"Calculated WP between full and dotted samples: {wp}")"""
-        if wp > 0.999:
+        if wp > 0.999:  # If WP is too high, we skip this simulation
             continue
-        """print(f"Calculated WR between full and dotted samples: {wp/(1-wp)}")"""
         WR_values.append(wp / (1 - wp))
 
     plt.hist(WR_values, bins=20, color="skyblue", edgecolor="black")
-    print(f"Mean WR between full and dotted samples: {np.mean(WR_values)}")
-    print(f"Median WR between full and dotted samples: {np.median(WR_values)}")
+    print(f"Mean WR between treatment and placebo: {np.mean(WR_values)}")
+    print(f"Median WR between treatment and placebo: {np.median(WR_values)}")
     plt.title("Histogram of WR Values")
     plt.xlabel("WR Value")
     plt.ylabel("Frequency")
